@@ -9,7 +9,7 @@ My solution to the durchblicker take-home assignment ([EN](docs/assignment/Codin
 |---|---|
 | 1. Data profiling & data quality | The issues [below](#task-1--data-profiling--data-quality), their evidence in the [notebook](notebooks/task1_data_profiling.ipynb) |
 | 2. Lead-to-conversion model | [`mart_lead_conversions`](dbt/models/marts/mart_lead_conversions.sql), [sample queries](notebooks/task2_lead_conversions.ipynb) |
-| 3. KPI & customer aggregation | [`agg_lead_conversions_monthly`](dbt/models/marts/agg_lead_conversions_monthly.sql), [`agg_customers`](dbt/models/marts/agg_customers.sql), [`agg_customer_journeys`](dbt/models/marts/agg_customer_journeys.sql) |
+| 3. KPI & customer aggregation | [`agg_lead_conversions_monthly`](dbt/models/marts/agg_lead_conversions_monthly.sql), [`agg_customers`](dbt/models/marts/agg_customers.sql), [`agg_customer_journeys`](dbt/models/marts/agg_customer_journeys.sql), [what they show](notebooks/task3_kpis_and_customers.ipynb) |
 | Assumptions and open questions | [Below](#assumptions-and-open-questions) |
 
 Every model and column is documented in the dbt yml files, including its type and when it can be NULL
@@ -104,6 +104,11 @@ All three models are built on `mart_lead_conversions`, so every definition exist
 | Attributed to a lead (monthly model, journey model) | 119 | 41 |
 | Belonging to a customer (customer model) | 119 | 50 |
 
+**What the models show.** The channels convert about equally often, but differ in what lasts: only 4 of google's
+11 conversions are still active, so a google lead is worth 86 EUR of active premium and a newsletter lead 186 EUR.
+The [notebook](notebooks/task3_kpis_and_customers.ipynb) tells the whole story, from touchpoint to lasting
+customer.
+
 ## Assumptions and open questions
 
 **Assumptions**
@@ -143,7 +148,7 @@ dbt deps
 dbt build
 ```
 
-Then open the notebooks. The Task 2 notebook reads the DuckDB file that dbt writes. Each chart is stored
+Then open the notebooks. Those of Tasks 2 and 3 read the DuckDB file that dbt writes. Each chart is stored
 twice: interactive, and as a PNG that also shows on GitHub (the export needs a local Chrome).
 
 ```bash
