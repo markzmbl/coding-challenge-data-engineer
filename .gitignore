@@ -11,3 +11,7 @@ dbt/.user.yml
 logs/
 *.duckdb
 *.duckdb.wal
+
+# Dagster
+.tmp_dagster_home_*/
+.dagster/

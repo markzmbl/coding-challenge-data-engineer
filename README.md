@@ -20,11 +20,14 @@ Take-home assignment for durchblicker (see `docs/assignment/Coding_Challenge_EN.
 │   ├── models/staging/           # sources, stg_leads, stg_conversions, tests, unit tests
 │   ├── models/marts/             # mart_lead_conversions (Task 2),
 │   │                             # mart_lead_conversions_monthly, mart_customers (Task 3)
+│   ├── snapshots/                # snp_conversions: contract history, SCD type 2 (Task 4)
 │   ├── analyses/                 # orphan_email_candidates (evidence for a Task 2 decision)
 │   └── tests/                    # generic: values_have_shape, parses_as_decimal;
 │                                 # singular: assert_task3_marts_add_up
+├── orchestration/                # Task 4: Dagster definitions (daily schedule, retries, alerts),
+│                                 # Dockerfile, pinned requirements for the image
 ├── pyproject.toml                # lint settings (ruff)
-├── requirements.txt              # pinned versions
+├── requirements.txt              # pinned versions; includes orchestration/requirements.txt
 └── README.md                     # setup + process log
 ```
 
@@ -70,6 +73,17 @@ Warnings are expected: they are the known data-quality issues from Task 1, each 
 (`warn_if` / `error_if`) that fails the run if the issue grows.
 
 Notebooks 02 and 03 read the dbt warehouse (`dbt/lead_conversions.duckdb`), so run `dbt build` before them.
+
+Run the pipeline with Dagster (web UI on http://localhost:3000), either in Docker or from the activated venv:
+
+```bash
+docker build -f orchestration/Dockerfile -t lead-conversions .
+docker run -p 3000:3000 lead-conversions
+```
+
+```bash
+dagster dev -m orchestration.definitions
+```
 
 ## Process log
 

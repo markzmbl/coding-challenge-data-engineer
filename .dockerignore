@@ -1,0 +1,14 @@
+# Keep the build context small: only dbt/, orchestration/ and data/raw/ go into the image.
+.venv/
+.git/
+.idea/
+logs/
+notebooks/
+docs/
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/.user.yml
+*.duckdb
+*.duckdb.wal
+**/__pycache__/
