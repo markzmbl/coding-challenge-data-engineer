@@ -1,0 +1,7 @@
+lead_conversions:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: lead_conversions.duckdb
+      threads: 4

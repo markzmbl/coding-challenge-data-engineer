@@ -1,0 +1,63 @@
+sources:
+  - name: raw
+    description: >
+      The CSV exports as delivered, copied unchanged into the raw schema at the start of every run
+      (macro load_raw_csv). Every column is text: nothing is typed, trimmed or parsed at this layer, so the
+      raw data stays exactly as in the files (notebook 01, section 1). Empty fields arrive as NULL.
+      _loaded_at records when the copy was made.
+    schema: raw
+    tables:
+      - name: leads
+        description: One row per lead interaction with a comparison calculator (leads.csv).
+        columns:
+          - name: lead_id
+            data_type: varchar
+            data_tests:
+              - not_null
+          - name: email
+            data_type: varchar
+          - name: vertical
+            data_type: varchar
+          - name: source
+            data_type: varchar
+          - name: created_at
+            data_type: varchar
+            description: Date in one of three formats (ISO, dd.mm.yyyy, mm/dd/yyyy), see notebook 01, section 6.
+            data_tests:
+              - values_have_shape:
+                  arguments:
+                    shapes: "{{ var('date_formats_by_shape').keys() | list }}"
+          - name: region
+            data_type: varchar
+          - name: _loaded_at
+            data_type: timestamp
+            description: When the file was copied into the raw schema.
+
+      - name: conversions
+        description: One row per closed contract, linked to a lead (conversions.csv).
+        columns:
+          - name: conversion_id
+            data_type: varchar
+            data_tests:
+              - not_null
+          - name: lead_id
+            data_type: varchar
+          - name: email
+            data_type: varchar
+          - name: premium
+            data_type: varchar
+            description: Annual net premium, with a decimal point or a decimal comma (notebook 01, section 8).
+            data_tests:
+              - parses_as_decimal
+          - name: signed_date
+            data_type: varchar
+            description: Date in one of three formats (ISO, dd.mm.yyyy, mm/dd/yyyy), see notebook 01, section 6.
+            data_tests:
+              - values_have_shape:
+                  arguments:
+                    shapes: "{{ var('date_formats_by_shape').keys() | list }}"
+          - name: status
+            data_type: varchar
+          - name: _loaded_at
+            data_type: timestamp
+            description: When the file was copied into the raw schema.

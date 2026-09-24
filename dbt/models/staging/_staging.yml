@@ -1,0 +1,213 @@
+# Staging: one model per source, cleaning only (no joins, no business rules).
+# The rules and the test severities come from notebook 01, section 11.
+#
+# Every column states its type and whether it can be NULL:
+# - "Never NULL": a not_null test with severity error. A NULL stops the build before the marts are built.
+# - "NULL if ...": a known gap from Task 1. The not_null test warns at that baseline (warn_if) and fails the
+#   run if the gap grows (error_if).
+
+models:
+  - name: stg_leads
+    description: >
+      One row per row of leads.csv, trimmed, typed and with dates parsed. Duplicate lead_ids are kept;
+      resolving them is a modelling decision for the marts.
+    columns:
+      - name: lead_id
+        data_type: integer
+        description: >
+          Lead id, cast to integer. Never NULL. Not unique: 4 ids occur twice with conflicting content
+          (merged in the mart).
+        data_tests:
+          - not_null
+          - unique:
+              config:
+                warn_if: ">0"
+                error_if: ">4"  # baseline: 4 lead_ids occur twice with conflicting content
+      - name: email
+        data_type: varchar
+        description: E-mail address, trimmed and lower-cased (notebook 01, sections 2 and 5). Never NULL.
+        data_tests:
+          - not_null
+      - name: vertical
+        data_type: varchar
+        description: "Comparison calculator: auto / haushalt / leben. NULL if blank in the file (3 rows)."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["auto", "haushalt", "leben"]
+          - not_null:
+              config:
+                warn_if: ">0"
+                error_if: ">3"  # baseline: 3 missing
+      - name: source
+        data_type: varchar
+        description: "Marketing channel of the lead: google / newsletter / direct. Never NULL."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["google", "newsletter", "direct"]
+      - name: created_at
+        data_type: date
+        description: >
+          Date the lead was created, parsed with the format of its shape (var date_formats_by_shape).
+          Never NULL: an unknown format or an impossible date would become NULL here and stop the build.
+        data_tests:
+          - not_null
+      - name: region
+        data_type: varchar
+        description: >
+          Austrian federal state, written with ae/oe instead of umlauts. NULL if blank in the file (5 rows).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Burgenland
+                  - Kaernten
+                  - Niederoesterreich
+                  - Oberoesterreich
+                  - Salzburg
+                  - Steiermark
+                  - Tirol
+                  - Vorarlberg
+                  - Wien
+              config:
+                severity: warn
+          - not_null:
+              config:
+                warn_if: ">0"
+                error_if: ">5"  # baseline: 5 missing
+
+  - name: stg_conversions
+    description: >
+      One row per contract from conversions.csv, trimmed, typed, with dates and premiums parsed and the
+      status normalised. Exact duplicate rows are removed.
+    columns:
+      - name: conversion_id
+        data_type: integer
+        description: Contract id, cast to integer. Never NULL, unique.
+        data_tests:
+          - not_null
+          - unique
+      - name: lead_id
+        data_type: integer
+        description: >
+          Id of the lead the contract belongs to, as given in the file. NULL if blank in the file (3 rows).
+          6 further ids do not exist in the leads (orphan conversions, notebook 01, section 9).
+        data_tests:
+          - not_null:
+              config:
+                warn_if: ">0"
+                error_if: ">3"  # baseline: 3 missing
+          - relationships:
+              arguments:
+                to: ref('stg_leads')
+                field: lead_id
+              config:
+                warn_if: ">0"
+                error_if: ">6"  # baseline: 6 ids that do not exist in the leads
+      - name: email
+        data_type: varchar
+        description: E-mail address, trimmed and lower-cased. Never NULL.
+        data_tests:
+          - not_null
+      - name: premium
+        data_type: decimal(12,2)
+        description: >
+          Annual net premium in EUR; the decimal comma is replaced by a point before casting. NULL if blank
+          in the file (2 rows); not imputed as 0. Can be negative (2 rows, both on cancelled contracts).
+        data_tests:
+          - not_null:
+              config:
+                warn_if: ">0"
+                error_if: ">2"  # baseline: 2 missing
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                warn_if: ">0"
+                error_if: ">2"  # baseline: 2 negative premiums, both on cancelled contracts
+      - name: signed_date
+        data_type: date
+        description: >
+          Date the contract was signed, parsed with the format of its shape. Never NULL: an unknown format
+          or an impossible date would become NULL here and stop the build.
+        data_tests:
+          - not_null
+      - name: status
+        data_type: varchar
+        description: >
+          Contract status: active / cancelled / pending. Lower-cased; the German spelling 'aktiv' is mapped
+          to 'active' (notebook 01, section 5). Never NULL and never another value: both tests fail with
+          severity error, so a contract without a known status stops the build before the marts are built.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["active", "cancelled", "pending"]
+
+unit_tests:
+  - name: stg_leads_parses_each_date_shape_with_its_own_format
+    description: >
+      Each shape has one format. Ambiguous values follow the convention of their shape: dotted dates are
+      day-first, slashed dates month-first. An unknown shape and an impossible date become NULL.
+    model: stg_leads
+    given:
+      - input: source('raw', 'leads')
+        rows:
+          - {lead_id: "1", created_at: "2024-05-12"}
+          - {lead_id: "2", created_at: "06.10.2024"}
+          - {lead_id: "3", created_at: "25.09.2024"}
+          - {lead_id: "4", created_at: "03/05/2024"}
+          - {lead_id: "5", created_at: "07/26/2024"}
+          - {lead_id: "6", created_at: "2024/05/12"}
+          - {lead_id: "7", created_at: "26/07/2024"}
+    expect:
+      rows:
+        - {lead_id: 1, created_at: 2024-05-12}
+        - {lead_id: 2, created_at: 2024-10-06}
+        - {lead_id: 3, created_at: 2024-09-25}
+        - {lead_id: 4, created_at: 2024-03-05}
+        - {lead_id: 5, created_at: 2024-07-26}
+        - {lead_id: 6, created_at: null}
+        - {lead_id: 7, created_at: null}
+
+  - name: stg_leads_trims_and_normalises_text
+    model: stg_leads
+    given:
+      - input: source('raw', 'leads')
+        rows:
+          - {lead_id: " 1087 ", email: "  Lea.Weber@GMX.at ", vertical: "auto", source: "google", region: ""}
+          - {lead_id: "1088", email: "NOAH.GRUBER@GMAIL.COM", vertical: null, source: "direct", region: "Wien"}
+    expect:
+      rows:
+        - {lead_id: 1087, email: "lea.weber@gmx.at", vertical: "auto", source: "google", region: null}
+        - {lead_id: 1088, email: "noah.gruber@gmail.com", vertical: null, source: "direct", region: "Wien"}
+
+  - name: stg_conversions_parses_premium_and_status
+    model: stg_conversions
+    given:
+      - input: source('raw', 'conversions')
+        rows:
+          - {conversion_id: "1", lead_id: "1047", premium: "1299,57", signed_date: "04.03.2024", status: "active"}
+          - {conversion_id: "2", lead_id: "", premium: "422.42", signed_date: "08/12/2024", status: "ACTIVE"}
+          - {conversion_id: "3", lead_id: "99874", premium: "-73.36", signed_date: "2024-05-29", status: "aktiv"}
+          - {conversion_id: "4", lead_id: null, premium: null, signed_date: "2024-05-29", status: "cancelled"}
+    expect:
+      rows:
+        - {conversion_id: 1, lead_id: 1047, premium: 1299.57, signed_date: 2024-03-04, status: "active"}
+        - {conversion_id: 2, lead_id: null, premium: 422.42, signed_date: 2024-08-12, status: "active"}
+        - {conversion_id: 3, lead_id: 99874, premium: -73.36, signed_date: 2024-05-29, status: "active"}
+        - {conversion_id: 4, lead_id: null, premium: null, signed_date: 2024-05-29, status: "cancelled"}
+
+  - name: stg_conversions_removes_exact_duplicates
+    description: Rows that are identical after cleaning (e.g. only whitespace differs) collapse into one.
+    model: stg_conversions
+    given:
+      - input: source('raw', 'conversions')
+        rows:
+          - {conversion_id: "5020", lead_id: "1031", email: "sophia.lang@hotmail.com", premium: "153.60", status: "pending"}
+          - {conversion_id: "5020", lead_id: "1031", email: " Sophia.Lang@hotmail.com", premium: "153.60", status: "pending"}
+    expect:
+      rows:
+        - {conversion_id: 5020, lead_id: 1031, email: "sophia.lang@hotmail.com", premium: 153.60, status: "pending"}

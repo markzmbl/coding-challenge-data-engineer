@@ -11,6 +11,12 @@ Take-home assignment for durchblicker (see `docs/assignment/Coding_Challenge_EN.
 ├── notebooks/
 │   ├── common/                   # code shared by the notebooks: paths, chart defaults
 │   └── 01_data_profiling.ipynb   # Task 1: profiling & DQ issue register
+├── dbt/                          # dbt project (DuckDB): raw -> staging -> marts
+│   ├── dbt_project.yml           # load hook, vars (known date formats)
+│   ├── profiles.yml              # local DuckDB file lead_conversions.duckdb
+│   ├── macros/                   # load_raw_csv, value_shape, parse_date_by_shape, parse_decimal
+│   ├── models/staging/           # sources, stg_leads, stg_conversions, tests, unit tests
+│   └── tests/generic/            # values_have_shape, parses_as_decimal
 ├── pyproject.toml                # lint settings (ruff)
 ├── requirements.txt              # pinned versions
 └── README.md                     # setup + process log
@@ -44,6 +50,18 @@ Lint the Python code and the notebooks (settings in `pyproject.toml`):
 ```bash
 ruff check .
 ```
+
+Build and test the dbt pipeline (from the `dbt` folder, which also holds `profiles.yml`):
+
+```bash
+cd dbt
+dbt deps
+dbt build
+```
+
+`dbt build` loads both CSVs into the `raw` schema, builds the models and runs all tests and unit tests.
+Warnings are expected: they are the known data-quality issues from Task 1, each monitored with a threshold
+(`warn_if` / `error_if`) that fails the run if the issue grows.
 
 ## Process log
 
@@ -82,6 +100,28 @@ finding and, where needed, applies a fix to a working copy, so the next section 
 - E-mails need trimming and lower-casing: 123 raw spellings become 88 distinct addresses.
 
 **Decisions / assumptions:** see notebook section 12.
+
+### dbt pipeline, step 1: raw and staging (`dbt/`)
+
+Local DuckDB via `dbt-duckdb`, so the pipeline runs with `pip install` and `dbt build`, with no cloud account
+needed. The layers follow notebook 01, section 11:
+- **Raw:** an `on-run-start` hook (`load_raw_csv`) copies both CSVs unchanged into the `raw` schema, every
+  column as text, with a pinned CSV dialect and a `_loaded_at` timestamp. It stands in for the ingestion job
+  that would fill these tables in production.
+- **Staging:** `stg_leads` (123 rows) and `stg_conversions` (50 rows): one row per source row, cleaning only.
+  - trim, blank → NULL, lower-cased e-mails, integer ids
+  - dates parsed with one format per shape; the known formats are a var, `date_formats_by_shape`
+  - decimal comma → point; `aktiv`/`ACTIVE` → `active`; the exact duplicate conversion is dropped
+  - duplicate lead ids are kept: resolving them is a modelling decision for the marts
+- **Tests:**
+  - Source tests fail on unknown date shapes and unparseable premiums.
+  - Staging tests check keys, accepted values and relationships.
+  - The known issues are warnings with an `error_if` threshold at the Task 1 baseline: 4 duplicate lead ids,
+    6 unknown and 3 missing lead ids, 3 missing verticals, 5 missing regions, 2 missing and 2 negative premiums.
+  - 4 unit tests pin down the parsing rules, e.g. `06.10.2024` → 6 Oct, `03/05/2024` → 5 Mar,
+    `2024/05/12` → NULL.
+- **Checked:** a run against a corrupted copy of the files fails on a new date format, a thousands separator,
+  a new status and a new channel.
 
 ### Task 2: Lead-to-Conversion Model
 _tbd_

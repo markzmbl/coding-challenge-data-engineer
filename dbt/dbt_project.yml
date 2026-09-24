@@ -1,0 +1,30 @@
+name: lead_conversions
+version: "1.0.0"
+config-version: 2
+profile: lead_conversions
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+clean-targets: ["target", "dbt_packages"]
+
+on-run-start:
+  - "create schema if not exists raw"
+  - "{{ load_raw_csv('leads') }}"
+  - "{{ load_raw_csv('conversions') }}"
+
+vars:
+  # Folder with the CSV exports, relative to the dbt project folder
+  raw_files_dir: "../data/raw"
+
+  # The date formats found in Task 1 (notebook 01, section 6): one format per value shape.
+  # A shape that is not listed here fails the source test and parses to NULL in staging.
+  date_formats_by_shape:
+    "9999-99-99": "%Y-%m-%d"
+    "99.99.9999": "%d.%m.%Y"
+    "99/99/9999": "%m/%d/%Y"
+
+models:
+  lead_conversions:
+    staging:
+      +materialized: view
