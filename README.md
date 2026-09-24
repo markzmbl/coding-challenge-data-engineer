@@ -12,7 +12,8 @@ Take-home assignment for durchblicker (see `docs/assignment/Coding_Challenge_EN.
 │   ├── common/                   # code shared by the notebooks: paths, chart defaults, warehouse queries
 │   ├── 01_data_profiling.ipynb   # Task 1: profiling & DQ issue register
 │   ├── 02_lead_conversions.ipynb # Task 2: sample queries and charts on the lead mart, for marketing
-│   └── 03_monthly_kpis_and_customers.ipynb  # Task 3: sample queries on the KPI and customer marts
+│   ├── 03_monthly_kpis_and_customers.ipynb  # Task 3: sample queries on the KPI and customer marts
+│   └── 04_architecture_and_automation.md    # Task 4: layers, checks, schedule, failures, traceability
 ├── dbt/                          # dbt project (DuckDB): raw -> staging -> marts
 │   ├── dbt_project.yml           # load hook, vars (known date formats, conversion window)
 │   ├── profiles.yml              # local DuckDB file lead_conversions.duckdb
@@ -226,4 +227,16 @@ all contracts. A unit test pins down what counts for a customer.
 - Top customers by active premium.
 
 ### Task 4: Architecture & Automation
-_tbd_
+
+Documented concisely in `notebooks/04_architecture_and_automation.md`.
+- **Orchestration:** Dagster runs `dbt build` daily at 06:00 (`orchestration/definitions.py`). Every dbt
+  model is an asset, every dbt test an asset check, and row counts are recorded per run. Failed steps are
+  retried twice; a run that still fails is reported by a run-failure sensor.
+- **Failure behaviour:** a test with severity error stops everything downstream, so the marts keep
+  yesterday's correct data. Known issues warn at their baseline and fail when they grow.
+- **History:** the snapshot `snp_conversions` records every change of a contract's status or premium
+  (SCD type 2), which the daily schedule makes useful. Tested with a changed export: the old version is
+  closed and a new one opened.
+- **Docker:** one small image with dbt and Dagster (`orchestration/Dockerfile`); in production the web
+  server and daemon would run separately, with Postgres for the run history.
+- **Checked:** the Dagster job runs end to end locally (6 assets, 58 asset checks, 0 errors).
