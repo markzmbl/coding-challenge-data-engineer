@@ -1,0 +1,52 @@
+conversion_id,lead_id,email,premium,signed_date,status
+5036,1103,  sophie.gruber@gmx.at,422.42,15.03.2024,active
+5021,1047,  julia.brunner@hotmail.com,"1299,57",04.03.2024,active
+5001,1076,julia.pichler@hotmail.com,"431,77",30.04.2024,active
+5030,1111,ELIAS.WINKLER@OUTLOOK.COM,"212,26",08/12/2024,cancelled
+5041,1007,anna.wagner@gmx.at,218.22,02.07.2024,cancelled
+5037,1117,noah.gruber@gmail.com,346.75,24.08.2024,cancelled
+5017,1028,sophie.aigner@hotmail.com,1359.55,2024-05-30,active
+5048,,julia.mueller@gmail.com,1293.44,17.03.2024,pending
+5028,1008,tobias.weber@aon.at,"1102,21",2024-10-05,cancelled
+5047,99874,paul.aigner@hotmail.com,442.55,2024-05-29,pending
+5042,90672,jakob.berger@outlook.com,829.52,10/28/2024,pending
+5043,98214,hannah.fuchs@gmx.at,"894,41",2024-06-17,active
+5016,1048,julia.winkler@outlook.com,645.84,03/30/2024,cancelled
+5039,1077,julia.pichler@hotmail.com,313.23,2024-06-18,active
+5004,1020,FLORIAN.FUCHS@AON.AT,260.71,02.04.2024,cancelled
+5018,1057,florian.mayer@gmx.at,407.03,17.03.2024,active
+5040,1003,leon.hofer@gmx.at,"570,49",2024-01-16,active
+5029,1051,leon.aigner@aon.at,344.89,07/03/2024,active
+5008,1013,emma.fischer@hotmail.com,197.86,2024-07-03,active
+5020,1031,sophia.lang@hotmail.com,153.60,2024-10-28,pending
+5050,,clara.winkler@gmx.at,1160.88,06/21/2024,pending
+5002,1096,  paul.fuchs@outlook.com,870.57,12.03.2024,aktiv
+5046,95482,mia.gruber@gmail.com,"187,03",2024-11-06,pending
+5024,1104,  sophie.gruber@hotmail.com,,01.07.2024,active
+5031,1025,laura.gruber@outlook.com,856.97,2024-06-01,active
+5026,1083,lea.leitner@gmx.at,265.69,2024-06-01,active
+5020,1031,sophia.lang@hotmail.com,153.60,2024-10-28,pending
+5038,1082,anna.mueller@hotmail.com,991.85,2024-11-17,pending
+5023,1088,mia.pichler@gmx.at,700.67,06/15/2024,active
+5027,1046,lena.hofer@gmail.com,"178,13",2024-05-30,active
+5006,1054,laura.brunner@outlook.com,"729,59",09.10.2024,cancelled
+5011,1079,MIA.STEINER@AON.AT,670.66,04/17/2024,cancelled
+5044,92827,mia.gruber@gmail.com,-73.36,17.02.2024,cancelled
+5025,1070,mia.berger@gmail.com,687.18,2024-04-25,ACTIVE
+5045,95962,david.hofer@aon.at,900.55,2024-09-28,cancelled
+5049,,mia.berger@gmail.com,881.65,2024-03-11,cancelled
+5003,1094,EMMA.LEITNER@OUTLOOK.COM,"123,63",2024-05-12,cancelled
+5034,1012,  laura.huber@gmx.at,-217.61,2024-11-14,cancelled
+5035,1085,lukas.mayer@aon.at,799.17,04/28/2024,active
+5033,1059,  mia.gruber@gmail.com,,08.02.2024,cancelled
+5007,1084,lukas.mayer@aon.at,175.51,2024-09-20,cancelled
+5019,1102,clara.mayer@gmail.com,409.48,19.07.2024,active
+5005,1114,STEFAN.FISCHER@OUTLOOK.COM,534.43,02.09.2024,active
+5010,1063,lena.lang@outlook.com,821.90,2024-06-15,active
+5009,1107,thomas.pichler@aon.at,"214,07",2024-11-29,active
+5015,1089,paul.winkler@aon.at,1159.06,2024-11-02,active
+5013,1036,hannah.fuchs@gmx.at,630.37,2024-02-04,cancelled
+5032,1016,mia.berger@gmail.com,1356.74,26.03.2024,active
+5022,1112,JULIA.MUELLER@GMAIL.COM,301.60,2024-06-27,active
+5014,1005,PAUL.AIGNER@GMAIL.COM,"999,13",2024-09-03,active
+5012,1053,leon.aigner@aon.at,"1042,68",2024-07-31,active
