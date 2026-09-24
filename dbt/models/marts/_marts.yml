@@ -1,0 +1,141 @@
+# Every column states its type and whether it can be NULL (same convention as in staging).
+
+models:
+  - name: mart_lead_conversions
+    description: >
+      Task 2: one row per lead, with its contract if the lead converted. Built for the marketing team: which
+      leads converted, through which channel, how fast and with which premium.
+
+
+      Decisions:
+      (1) Leads whose lead_id appears more than once are merged into one row. A value the copies agree on is
+      kept; contradicting values (e.g. two different regions) become 'unknown', like missing values.
+      (2) Leads that never converted are kept (is_converted = false, contract columns NULL): they are the
+      denominator of every conversion rate.
+      (3) Conversions without a known lead (9 of 50 contracts: lead_id missing or not in the leads) are not
+      included, because they cannot be credited to a channel, vertical or month. The staging tests keep
+      monitoring them.
+    columns:
+      - name: lead_id
+        data_type: integer
+        description: Lead id. One row per lead. Never NULL, unique.
+        data_tests:
+          - unique
+          - not_null
+      - name: lead_date
+        data_type: date
+        description: Date the lead was created. Never NULL.
+        data_tests:
+          - not_null
+      - name: lead_month
+        data_type: date
+        description: First day of the month of lead_date, for monthly reporting. Never NULL.
+        data_tests:
+          - not_null
+      - name: vertical
+        data_type: varchar
+        description: >
+          Comparison calculator: auto / haushalt / leben, or 'unknown' if missing or contradicting.
+          Never NULL.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["auto", "haushalt", "leben", "unknown"]
+      - name: source
+        data_type: varchar
+        description: >
+          Marketing channel: google / newsletter / direct, or 'unknown' if contradicting. Never NULL.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["google", "newsletter", "direct", "unknown"]
+      - name: region
+        data_type: varchar
+        description: Austrian federal state, or 'unknown' if missing or contradicting. Never NULL.
+        data_tests:
+          - not_null
+      - name: email
+        data_type: varchar
+        description: E-mail address of the person, lower-cased. Never NULL.
+        data_tests:
+          - not_null
+      - name: is_converted
+        data_type: boolean
+        description: >
+          True if the lead has a signed contract, whatever its current status. A contract cancelled later
+          still counts as a conversion (the cancellation is churn); a pending contract is signed but not yet
+          in force. Checking that the contract exists is enough: in staging every contract has a status
+          (never NULL, tested with severity error), and all three statuses count. Never NULL.
+        data_tests:
+          - not_null
+      - name: conversion_id
+        data_type: integer
+        description: Id of the contract. NULL if the lead did not convert; never NULL for converted leads.
+        data_tests:
+          - unique
+          - not_null:
+              config:
+                where: "is_converted"
+      - name: signed_date
+        data_type: date
+        description: Date the contract was signed. NULL if the lead did not convert; never NULL for converted leads.
+        data_tests:
+          - not_null:
+              config:
+                where: "is_converted"
+      - name: contract_status
+        data_type: varchar
+        description: >
+          Current status of the contract: active / cancelled / pending. NULL if the lead did not convert;
+          never NULL for converted leads.
+        data_tests:
+          - not_null:
+              config:
+                where: "is_converted"
+          - accepted_values:
+              arguments:
+                values: ["active", "cancelled", "pending"]
+      - name: premium
+        data_type: decimal(12,2)
+        description: >
+          Annual net premium of the contract in EUR. NULL if the lead did not convert, and for 2 converted
+          leads whose premium is missing in the file (not imputed as 0). One cancelled contract has a
+          negative premium.
+      - name: days_to_sign
+        data_type: bigint
+        description: >
+          Days from lead_date to signed_date. NULL if the lead did not convert; never NULL and never negative
+          for converted leads.
+        data_tests:
+          - not_null:
+              config:
+                where: "is_converted"
+          # A negative value would mean the contract was signed before the lead existed, e.g. because of a
+          # wrongly parsed date. This guards the date-format assumption from Task 1.
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+unit_tests:
+  - name: mart_lead_conversions_merges_duplicate_leads_and_keeps_unconverted_leads
+    description: >
+      Copies of a lead are merged: agreeing values are kept, a value missing in one copy is taken from the
+      other, contradicting values become 'unknown'. Leads without a contract stay in; a contract without a
+      known lead is left out.
+    model: mart_lead_conversions
+    given:
+      - input: ref('stg_leads')
+        rows:
+          - {lead_id: 1, email: "a@x.at", vertical: "auto", source: "google", created_at: 2024-05-01, region: "Wien"}
+          - {lead_id: 1, email: "a@x.at", vertical: null, source: "newsletter", created_at: 2024-05-01, region: "Tirol"}
+          - {lead_id: 2, email: "b@x.at", vertical: "leben", source: "direct", created_at: 2024-05-10, region: null}
+      - input: ref('stg_conversions')
+        rows:
+          - {conversion_id: 10, lead_id: 2, email: "b@x.at", premium: 120.50, signed_date: 2024-05-31, status: "active"}
+          - {conversion_id: 11, lead_id: 99, email: "c@x.at", premium: 80.00, signed_date: 2024-06-01, status: "pending"}
+    expect:
+      rows:
+        - {lead_id: 1, lead_month: 2024-05-01, vertical: "auto", source: "unknown", region: "unknown", is_converted: false, conversion_id: null, days_to_sign: null}
+        - {lead_id: 2, lead_month: 2024-05-01, vertical: "leben", source: "direct", region: "unknown", is_converted: true, conversion_id: 10, days_to_sign: 21}

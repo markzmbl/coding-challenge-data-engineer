@@ -28,3 +28,5 @@ models:
   lead_conversions:
     staging:
       +materialized: view
+    marts:
+      +materialized: table

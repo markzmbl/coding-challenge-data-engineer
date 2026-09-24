@@ -16,6 +16,8 @@ Take-home assignment for durchblicker (see `docs/assignment/Coding_Challenge_EN.
 │   ├── profiles.yml              # local DuckDB file lead_conversions.duckdb
 │   ├── macros/                   # load_raw_csv, value_shape, parse_date_by_shape, parse_decimal
 │   ├── models/staging/           # sources, stg_leads, stg_conversions, tests, unit tests
+│   ├── models/marts/             # mart_lead_conversions (Task 2)
+│   ├── analyses/                 # orphan_email_candidates (evidence for a Task 2 decision)
 │   └── tests/generic/            # values_have_shape, parses_as_decimal
 ├── pyproject.toml                # lint settings (ruff)
 ├── requirements.txt              # pinned versions
@@ -124,7 +126,27 @@ needed. The layers follow notebook 01, section 11:
   a new status and a new channel.
 
 ### Task 2: Lead-to-Conversion Model
-_tbd_
+
+**Audience:** the marketing team (channel steering), together with the product owners of the verticals.
+They want to see which leads converted, through which channel, how fast and with which premium.
+
+**Mart `mart_lead_conversions` (`dbt/models/marts/`):** one row per lead (119), with its contract if the lead
+converted (41 leads, 34.5 %). Columns: lead id, date and month, vertical, source, region, e-mail,
+`is_converted`, contract id, signed date, status, premium, `days_to_sign`.
+
+**Decisions**
+- Duplicate lead ids are merged into one row: values the copies agree on are kept, contradicting ones become
+  `unknown`, like missing values.
+- Leads that never converted stay in (`is_converted = false`): they are the denominator of every conversion
+  rate.
+- A lead counts as converted if it has a signed contract, whatever its status. A later cancellation is churn,
+  not a failed conversion.
+- Conversions without a known lead (9 of 50, including 5 of the 7 pending contracts) are left out: they can't
+  be credited to a channel, vertical or month. The staging tests keep monitoring them. Linking them by e-mail
+  instead would mostly be a guess: only 3 of the 9 have a lead with the same e-mail and a plausible time to
+  sign (`dbt show --select orphan_email_candidates --limit 20`).
+- Tests: one row per lead (`lead_id` unique), unique contract ids, and `days_to_sign >= 0`, which guards the
+  date-format assumption. A unit test pins down the merge rule.
 
 ### Task 3: KPI & Customer-Level Aggregation
 _tbd_
