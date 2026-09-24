@@ -3,12 +3,12 @@
 My solution to the durchblicker take-home assignment ([EN](docs/assignment/Coding_Challenge_EN.pdf),
 [DE](docs/assignment/Coding_Challenge_DE.pdf)):
 - A dbt pipeline on DuckDB turns the two CSV exports into tested tables (raw → staging → marts).
-- A notebook shows the profiling.
+- Notebooks show the profiling, and how a business team works with the tables.
 
 | Task | Deliverable |
 |---|---|
 | 1. Data profiling & data quality | The issues [below](#task-1--data-profiling--data-quality), their evidence in the [notebook](notebooks/task1_data_profiling.ipynb) |
-| 2. Lead-to-conversion model | [`mart_lead_conversions`](dbt/models/marts/mart_lead_conversions.sql) |
+| 2. Lead-to-conversion model | [`mart_lead_conversions`](dbt/models/marts/mart_lead_conversions.sql), [sample queries](notebooks/task2_lead_conversions.ipynb) |
 | Assumptions and open questions | [Below](#assumptions-and-open-questions) |
 
 Every model and column is documented in the dbt yml files, including its type and when it can be NULL
@@ -105,8 +105,8 @@ dbt deps
 dbt build
 ```
 
-Then open the notebook. Each chart is stored twice: interactive, and as a PNG that also shows on GitHub
-(the export needs a local Chrome).
+Then open the notebooks. The Task 2 notebook reads the DuckDB file that dbt writes. Each chart is stored
+twice: interactive, and as a PNG that also shows on GitHub (the export needs a local Chrome).
 
 ```bash
 python -m ipykernel install --user --name coding-challenge-de
