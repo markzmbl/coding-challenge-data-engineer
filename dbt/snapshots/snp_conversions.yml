@@ -1,0 +1,13 @@
+snapshots:
+  - name: snp_conversions
+    relation: ref('stg_conversions')
+    description: >
+      History of every contract (slowly changing dimension, type 2). Each run compares status and premium
+      with the last known version of the contract. A change closes the old row (dbt_valid_to) and adds a new
+      one (dbt_valid_from), so questions like "when was a contract cancelled" become answerable over time.
+      The history starts with the first run: the source only delivers the current state.
+    config:
+      schema: snapshots
+      unique_key: conversion_id
+      strategy: check
+      check_cols: ["status", "premium"]

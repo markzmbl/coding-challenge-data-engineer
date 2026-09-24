@@ -3,6 +3,7 @@
 My solution to the durchblicker take-home assignment ([EN](docs/assignment/Coding_Challenge_EN.pdf),
 [DE](docs/assignment/Coding_Challenge_DE.pdf)):
 - A dbt pipeline on DuckDB turns the two CSV exports into tested tables (raw → staging → marts).
+- Dagster runs it every day.
 - Notebooks show the profiling, and how a business team works with the tables.
 
 | Task | Deliverable |
@@ -10,10 +11,8 @@ My solution to the durchblicker take-home assignment ([EN](docs/assignment/Codin
 | 1. Data profiling & data quality | The issues [below](#task-1--data-profiling--data-quality), their evidence in the [notebook](notebooks/task1_data_profiling.ipynb) |
 | 2. Lead-to-conversion model | [`mart_lead_conversions`](dbt/models/marts/mart_lead_conversions.sql), [sample queries](notebooks/task2_lead_conversions.ipynb) |
 | 3. KPI & customer aggregation | [`agg_lead_conversions_monthly`](dbt/models/marts/agg_lead_conversions_monthly.sql), [`agg_customers`](dbt/models/marts/agg_customers.sql), [`agg_customer_journeys`](dbt/models/marts/agg_customer_journeys.sql), [what they show](notebooks/task3_kpis_and_customers.ipynb) |
+| 4. Architecture & automation | [Dagster job](orchestration/definitions.py), [Dockerfile](orchestration/Dockerfile), [example test](dbt/tests/generic/test_values_have_shape.sql) |
 | Assumptions and open questions | [Below](#assumptions-and-open-questions) |
-
-Every model and column is documented in the dbt yml files, including its type and when it can be NULL
-([staging](dbt/models/staging/_staging.yml), [marts](dbt/models/marts/_marts.yml)).
 
 ## Task 1 – Data profiling & data quality
 
@@ -109,6 +108,17 @@ All three models are built on `mart_lead_conversions`, so every definition exist
 The [notebook](notebooks/task3_kpis_and_customers.ipynb) tells the whole story, from touchpoint to lasting
 customer.
 
+## Task 4 – Architecture & automation
+
+| Question | Answer |
+|---|---|
+| Layers | raw (the files as text) → staging (cleaning only) → marts (one grain each), plus a snapshot with the history of every contract. |
+| Data-quality checks | dbt tests where a problem first becomes visible: on raw, on staging and on the marts, plus unit tests for the rules. |
+| Schedule | Dagster runs `dbt build` daily at 06:00. |
+| On failure | Failed steps are retried twice. A failed test stops everything downstream, so the marts keep yesterday's data. Known issues warn at their baseline and fail the run when they grow. A sensor reports runs that still fail. |
+| Traceability and documentation | Every model and column is documented in the dbt yml files, with its type and when it can be NULL ([staging](dbt/models/staging/_staging.yml), [marts](dbt/models/marts/_marts.yml)). Dagster keeps the lineage, the checks and the row counts of every run. `_loaded_at` and the contract snapshot keep the history of the data, git that of the code. |
+| Example test | [`values_have_shape`](dbt/tests/generic/test_values_have_shape.sql) fails the run on a date format the pipeline does not know. |
+
 ## Assumptions and open questions
 
 **Assumptions**
@@ -154,6 +164,14 @@ twice: interactive, and as a PNG that also shows on GitHub (the export needs a l
 ```bash
 python -m ipykernel install --user --name coding-challenge-de
 jupyter lab
+```
+
+Dagster (UI on http://localhost:3000) starts from the venv with `dagster dev -m orchestration.definitions`, or in
+Docker:
+
+```bash
+docker build -f orchestration/Dockerfile -t lead-conversions .
+docker run -p 3000:3000 lead-conversions
 ```
 
 Lint the Python code and the notebooks with `ruff check .`.
