@@ -9,8 +9,9 @@ Take-home assignment for durchblicker (see `docs/assignment/Coding_Challenge_EN.
 ├── data/raw/                     # leads.csv, conversions.csv: the exports as delivered (not modified)
 ├── docs/assignment/              # the assignment (EN, DE)
 ├── notebooks/
-│   ├── common/                   # code shared by the notebooks: paths, chart defaults
-│   └── 01_data_profiling.ipynb   # Task 1: profiling & DQ issue register
+│   ├── common/                   # code shared by the notebooks: paths, chart defaults, warehouse queries
+│   ├── 01_data_profiling.ipynb   # Task 1: profiling & DQ issue register
+│   └── 02_lead_conversions.ipynb # Task 2: sample queries and charts on the lead mart, for marketing
 ├── dbt/                          # dbt project (DuckDB): raw -> staging -> marts
 │   ├── dbt_project.yml           # load hook, vars (known date formats)
 │   ├── profiles.yml              # local DuckDB file lead_conversions.duckdb
@@ -64,6 +65,8 @@ dbt build
 `dbt build` loads both CSVs into the `raw` schema, builds the models and runs all tests and unit tests.
 Warnings are expected: they are the known data-quality issues from Task 1, each monitored with a threshold
 (`warn_if` / `error_if`) that fails the run if the issue grows.
+
+Notebook 02 reads the dbt warehouse (`dbt/lead_conversions.duckdb`), so run `dbt build` before it.
 
 ## Process log
 
@@ -147,6 +150,14 @@ converted (41 leads, 34.5 %). Columns: lead id, date and month, vertical, source
   sign (`dbt show --select orphan_email_candidates --limit 20`).
 - Tests: one row per lead (`lead_id` unique), unique contract ids, and `days_to_sign >= 0`, which guards the
   date-format assumption. A unit test pins down the merge rule.
+
+**Notebook `notebooks/02_lead_conversions.ipynb`:** sample queries and charts the marketing team can build on
+the mart directly: plain SQL on one table, no staging or raw data.
+- Overview: 119 leads, 41 conversions (34.5 %), 26 active contracts; a successful conversion takes 21.7 days
+  on average.
+- Average days to sign per channel (about three weeks everywhere), active premium per channel, and the latest
+  leads without a contract as a follow-up list.
+- `unknown` values are left out of the charts (with a note) but kept in the result tables.
 
 ### Task 3: KPI & Customer-Level Aggregation
 _tbd_
