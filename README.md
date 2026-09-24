@@ -11,7 +11,7 @@ My solution to the durchblicker take-home assignment ([EN](docs/assignment/Codin
 | 1. Data profiling & data quality | The issues [below](#task-1--data-profiling--data-quality), their evidence in the [notebook](notebooks/task1_data_profiling.ipynb) |
 | 2. Lead-to-conversion model | [`mart_lead_conversions`](dbt/models/marts/mart_lead_conversions.sql), [sample queries](notebooks/task2_lead_conversions.ipynb) |
 | 3. KPI & customer aggregation | [`agg_lead_conversions_monthly`](dbt/models/marts/agg_lead_conversions_monthly.sql), [`agg_customers`](dbt/models/marts/agg_customers.sql), [`agg_customer_journeys`](dbt/models/marts/agg_customer_journeys.sql), [what they show](notebooks/task3_kpis_and_customers.ipynb) |
-| 4. Architecture & automation | [Dagster job](orchestration/definitions.py), [Dockerfile](orchestration/Dockerfile), [example test](dbt/tests/generic/test_values_have_shape.sql) |
+| 4. Architecture & automation | [Write-up](docs/task4_architecture.md), [Dagster job](orchestration/definitions.py), [Dockerfile](orchestration/Dockerfile), [example test](dbt/tests/generic/test_values_have_shape.sql) |
 | Assumptions and open questions | [Below](#assumptions-and-open-questions) |
 
 ## Task 1 – Data profiling & data quality
@@ -40,7 +40,7 @@ converting correctly, or only the team that owns the source.
 | 5 | How the source links a lead to a contract is unknown: no lead a contract names is older than 40 days, and in 2 of 40 contracts it is not the last lead before signing (9.3, 9.4) | Low | Conversions are attributed by rule (Task 2). | How is the `lead_id` of a contract chosen, and is 40 days a limit of the system? |
 | 6 | 2 negative premiums, both on cancelled contracts (7) | Low | Kept: no active premium is affected. | A refund, a reversal booking, or an error? |
 
-**Settled by converting correctly.** One rule each, guarded by a test:
+**Settled by converting correctly.** One rule each, guarded by a [test](docs/task4_architecture.md#2-where-the-data-quality-checks-sit):
 
 | # | Issue | Criticality | Rule |
 |---|---|---|---|
@@ -110,14 +110,16 @@ customer.
 
 ## Task 4 – Architecture & automation
 
-| Question | Answer |
-|---|---|
-| Layers | raw (the files as text) → staging (cleaning only) → marts (one grain each), plus a snapshot with the history of every contract. |
-| Data-quality checks | dbt tests where a problem first becomes visible: on raw, on staging and on the marts, plus unit tests for the rules. |
-| Schedule | Dagster runs `dbt build` daily at 06:00. |
-| On failure | Failed steps are retried twice. A failed test stops everything downstream, so the marts keep yesterday's data. Known issues warn at their baseline and fail the run when they grow. A sensor reports runs that still fail. |
-| Traceability and documentation | Every model and column is documented in the dbt yml files, with its type and when it can be NULL ([staging](dbt/models/staging/_staging.yml), [marts](dbt/models/marts/_marts.yml)). Dagster keeps the lineage, the checks and the row counts of every run. `_loaded_at` and the contract snapshot keep the history of the data, git that of the code. |
-| Example test | [`values_have_shape`](dbt/tests/generic/test_values_have_shape.sql) fails the run on a date format the pipeline does not know. |
+The answers in short; the [write-up](docs/task4_architecture.md) has the details.
+
+| Question | Answer | Details |
+|---|---|---|
+| Layers | raw → staging → marts, plus a snapshot with the history of every contract | [1](docs/task4_architecture.md#1-layer-structure) |
+| Data-quality checks | dbt tests on every layer, where a problem first becomes visible; every issue of Task 1 has its check | [2](docs/task4_architecture.md#2-where-the-data-quality-checks-sit) |
+| Schedule and failure | Dagster runs `dbt build` daily; a failed test stops the run before the marts, which keep yesterday's data | [3](docs/task4_architecture.md#3-how-often-and-what-happens-on-failure) |
+| Traceability and documentation | Column documentation in dbt ([staging](dbt/models/staging/_staging.yml), [marts](dbt/models/marts/_marts.yml)), run history in Dagster, a snapshot of the contracts, git | [4](docs/task4_architecture.md#4-traceability-and-documentation) |
+| Example test | [`values_have_shape`](dbt/tests/generic/test_values_have_shape.sql): an unknown date format fails the run | [5](docs/task4_architecture.md#5-example-test) |
+| Production | The same design on Google Cloud | [6](docs/task4_architecture.md#6-in-production-eg-on-google-cloud) |
 
 ## Assumptions and open questions
 

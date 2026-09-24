@@ -1,5 +1,5 @@
 # dbt + Dagster in one small image. `dagster dev` runs the web UI and the scheduler in one process,
-# which is enough for a single machine.
+# which is enough for a single machine (production: see docs/task4_architecture.md).
 #
 # Build and run from the repository root:
 #   docker build -f orchestration/Dockerfile -t lead-conversions .
