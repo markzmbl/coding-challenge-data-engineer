@@ -118,6 +118,124 @@ models:
               arguments:
                 min_value: 0
 
+  - name: mart_lead_conversions_monthly
+    description: >
+      Task 3: conversion KPIs per vertical, source and lead month, built on mart_lead_conversions (same
+      definitions). The month is the month the lead came in: a conversion counts in the month of its lead, so
+      a rate never exceeds 100 %. 'unknown' vertical or source stays as its own rows, so that the table adds
+      up to all leads. To combine rows (e.g. all months of a channel), add up leads and conversions and divide
+      again; do not average the rates.
+
+
+      The conversions are also split by the contract's status today (active / pending / cancelled), so the
+      table answers which channels bring contracts that last. There is no status history: a past month changes
+      when one of its contracts is cancelled later (freezing the history would need a dbt snapshot).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ["vertical", "source", "lead_month"]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "conversions <= leads"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "conversions = active_contracts + pending_contracts + cancelled_contracts"
+    columns:
+      - name: vertical
+        data_type: varchar
+        description: "Comparison calculator: auto / haushalt / leben / unknown. Never NULL."
+        data_tests:
+          - not_null
+      - name: source
+        data_type: varchar
+        description: "Marketing channel: google / newsletter / direct / unknown. Never NULL."
+        data_tests:
+          - not_null
+      - name: lead_month
+        data_type: date
+        description: First day of the month the leads came in. Never NULL.
+        data_tests:
+          - not_null
+      - name: leads
+        data_type: bigint
+        description: Number of leads. Never NULL, at least 1.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: conversions
+        data_type: bigint
+        description: Number of these leads with a signed contract, whatever its status. Never NULL.
+        data_tests:
+          - not_null
+      - name: conversion_rate
+        data_type: double
+        description: conversions / leads, between 0 and 1. Never NULL.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: active_contracts
+        data_type: bigint
+        description: Converted leads whose contract is active today. Never NULL.
+        data_tests:
+          - not_null
+      - name: pending_contracts
+        data_type: bigint
+        description: Converted leads whose contract is signed but not yet in force (pending). Never NULL.
+        data_tests:
+          - not_null
+      - name: cancelled_contracts
+        data_type: bigint
+        description: Converted leads whose contract has been cancelled since. Never NULL.
+        data_tests:
+          - not_null
+      - name: is_complete
+        data_type: boolean
+        description: >
+          False while the leads of the month can still convert. A month is complete once all of its leads are
+          at least conversion_window_days (40) old at the data cutoff, the latest signing date in the data.
+          Never NULL.
+        data_tests:
+          - not_null
+
+  - name: mart_customers
+    description: >
+      Task 3: one row per customer. A customer is a person, identified by the e-mail address (trimmed and
+      lower-cased); two different addresses count as two customers, even with the same name. Unlike
+      mart_lead_conversions, the customer view counts all contracts, including those whose lead is unknown
+      (9 of 50): a contract belongs to the person even when its lead cannot be found.
+    columns:
+      - name: customer_email
+        data_type: varchar
+        description: E-mail address of the customer, lower-cased. Never NULL, unique.
+        data_tests:
+          - unique
+          - not_null
+      - name: leads
+        data_type: bigint
+        description: Number of leads of the customer. Never NULL; 0 if the person only appears with a contract.
+        data_tests:
+          - not_null
+      - name: conversions
+        data_type: bigint
+        description: Number of signed contracts of the customer, whatever their status. Never NULL.
+        data_tests:
+          - not_null
+      - name: total_active_premium
+        data_type: decimal(38,2)
+        description: >
+          Sum of the annual net premiums of the customer's active contracts, in EUR. 0 without an active
+          contract; NULL if an active contract has no premium in the source (1 customer today).
+      - name: has_active_contract
+        data_type: boolean
+        description: True if the customer holds at least one active contract today. Never NULL.
+        data_tests:
+          - not_null
+
 unit_tests:
   - name: mart_lead_conversions_merges_duplicate_leads_and_keeps_unconverted_leads
     description: >
@@ -139,3 +257,26 @@ unit_tests:
       rows:
         - {lead_id: 1, lead_month: 2024-05-01, vertical: "auto", source: "unknown", region: "unknown", is_converted: false, conversion_id: null, days_to_sign: null}
         - {lead_id: 2, lead_month: 2024-05-01, vertical: "leben", source: "direct", region: "unknown", is_converted: true, conversion_id: 10, days_to_sign: 21}
+
+  - name: mart_customers_counts_all_contracts_of_a_person
+    description: >
+      A customer is an e-mail address. A contract without a known lead counts for the person. The active
+      premium sums the active contracts: 0 without one, NULL if an active contract has no premium.
+    model: mart_customers
+    given:
+      - input: ref('mart_lead_conversions')
+        rows:
+          - {lead_id: 1, email: "a@x.at"}
+          - {lead_id: 2, email: "a@x.at"}
+          - {lead_id: 3, email: "b@x.at"}
+          - {lead_id: 4, email: "c@x.at"}
+      - input: ref('stg_conversions')
+        rows:
+          - {conversion_id: 10, lead_id: 1, email: "a@x.at", premium: 100.00, status: "cancelled"}
+          - {conversion_id: 11, lead_id: 99, email: "a@x.at", premium: 250.00, status: "active"}
+          - {conversion_id: 12, lead_id: 3, email: "b@x.at", premium: null, status: "active"}
+    expect:
+      rows:
+        - {customer_email: "a@x.at", leads: 2, conversions: 2, total_active_premium: 250.00, has_active_contract: true}
+        - {customer_email: "b@x.at", leads: 1, conversions: 1, total_active_premium: null, has_active_contract: true}
+        - {customer_email: "c@x.at", leads: 1, conversions: 0, total_active_premium: 0, has_active_contract: false}

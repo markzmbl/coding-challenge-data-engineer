@@ -24,6 +24,10 @@ vars:
     "99.99.9999": "%d.%m.%Y"
     "99/99/9999": "%m/%d/%Y"
 
+  # Longest time from lead to signed contract seen in the data, in days. A lead month counts as complete
+  # once all of its leads are at least this old at the data cutoff (mart_lead_conversions_monthly).
+  conversion_window_days: 40
+
 models:
   lead_conversions:
     staging:

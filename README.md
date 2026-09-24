@@ -13,13 +13,15 @@ Take-home assignment for durchblicker (see `docs/assignment/Coding_Challenge_EN.
 │   ├── 01_data_profiling.ipynb   # Task 1: profiling & DQ issue register
 │   └── 02_lead_conversions.ipynb # Task 2: sample queries and charts on the lead mart, for marketing
 ├── dbt/                          # dbt project (DuckDB): raw -> staging -> marts
-│   ├── dbt_project.yml           # load hook, vars (known date formats)
+│   ├── dbt_project.yml           # load hook, vars (known date formats, conversion window)
 │   ├── profiles.yml              # local DuckDB file lead_conversions.duckdb
 │   ├── macros/                   # load_raw_csv, value_shape, parse_date_by_shape, parse_decimal
 │   ├── models/staging/           # sources, stg_leads, stg_conversions, tests, unit tests
-│   ├── models/marts/             # mart_lead_conversions (Task 2)
+│   ├── models/marts/             # mart_lead_conversions (Task 2),
+│   │                             # mart_lead_conversions_monthly, mart_customers (Task 3)
 │   ├── analyses/                 # orphan_email_candidates (evidence for a Task 2 decision)
-│   └── tests/generic/            # values_have_shape, parses_as_decimal
+│   └── tests/                    # generic: values_have_shape, parses_as_decimal;
+│                                 # singular: assert_task3_marts_add_up
 ├── pyproject.toml                # lint settings (ruff)
 ├── requirements.txt              # pinned versions
 └── README.md                     # setup + process log
@@ -160,7 +162,43 @@ the mart directly: plain SQL on one table, no staging or raw data.
 - `unknown` values are left out of the charts (with a note) but kept in the result tables.
 
 ### Task 3: KPI & Customer-Level Aggregation
-_tbd_
+
+Both marts are built on `mart_lead_conversions`, so they share its definitions (duplicate leads merged,
+conversion rule). Building a mart on a mart is deliberate: the definitions exist in one place only.
+
+**Definitions**
+- **Conversion:** a lead with a signed contract, whatever the contract's status (as in Task 2).
+- **Month:** the month the **lead** came in, not the month the contract was signed. A conversion counts in the
+  month of its lead, so a rate never exceeds 100 %.
+- **Complete month:** contracts come up to 40 days after the lead (var `conversion_window_days`). A month is
+  complete once all its leads are at least that old at the data cutoff, the latest signing date (2024-11-29).
+  Only October 2024 is incomplete.
+- **Contract status:** today's status (active / pending / cancelled). There is no status history, so the
+  numbers of a past month change when one of its contracts is cancelled later. Freezing that history would
+  need a dbt snapshot of the contracts (slowly changing dimension, type 2), which only pays off with recurring
+  runs (Task 4).
+- **Customer:** a person, identified by the cleaned e-mail address. Different addresses are different
+  customers, even with the same name (a documented limitation from Task 1).
+
+**Mart `mart_lead_conversions_monthly`:** one row per vertical × source × lead month (68 rows): `leads`,
+`conversions`, `conversion_rate`, the conversions by status (`active_contracts`, `pending_contracts`,
+`cancelled_contracts`) and `is_complete`. `unknown` stays as its own rows, so the table adds up to all
+119 leads. All counts are additive: to combine rows, add them up and divide again; don't average the rates.
+The status split answers a question beyond the required minimum: which channels bring contracts that last.
+
+**Mart `mart_customers`:** one row per customer (88): `leads`, `conversions`, `total_active_premium`,
+`has_active_contract`.
+- The customer view counts **all 50 contracts**, including the 9 whose lead is unknown: a contract belongs to
+  the person even when its lead can't be found. Without them, e.g. hannah.fuchs@gmx.at would show no active
+  contract, although she holds one (894.41 EUR).
+- `total_active_premium` is 0 without an active contract, and NULL if an active contract has no premium in the
+  source (1 customer): unknown is not the same as zero.
+
+**Tests:** unique vertical × source × month, `conversions <= leads`, active + pending + cancelled =
+conversions, rate between 0 and 1, unique customers,
+and a reconciliation test: the monthly mart adds up to the lead mart, the customer view to the lead mart and to
+all contracts. A unit test pins down what counts for a customer.
+
 
 ### Task 4: Architecture & Automation
 _tbd_
