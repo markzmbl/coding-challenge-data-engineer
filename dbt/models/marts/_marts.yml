@@ -1,0 +1,211 @@
+# Every column states its type and whether it can be NULL (same convention as in staging).
+
+models:
+  - name: mart_lead_conversions
+    description: >
+      Task 2: one row per lead, with the contract the lead is a touchpoint of. Built for the marketing team:
+      which leads converted, through which channel, how fast and with which premium.
+
+
+      Attribution: conversions.csv has no vertical, so the lead a contract names (its lead_id) gives the contract
+      its vertical. The touchpoints of a contract are that lead, plus every other lead of the same person
+      (e-mail) and vertical created within attribution_window_days before signing. A lead counts for one
+      contract at most: a linked lead for its own contract, any other lead for the earliest contract after it.
+      The earliest touchpoint is the first touch, the latest the last touch.
+
+
+      Decisions:
+      (1) Leads whose lead_id appears more than once are merged into one row. A value the copies agree on is
+      kept; contradicting values (e.g. two different regions) become 'unknown', like missing values.
+      (2) Leads that never converted are kept (is_converted = false, contract columns NULL): they are the
+      denominator of every conversion rate.
+      (3) Contracts without a valid lead_id (9 of 50) are not included: without the lead they have no vertical,
+      and a vertical guessed from the e-mail would be a guess. The staging tests keep monitoring them.
+
+
+      A contract with several touchpoints appears on several rows. To count contracts, or to sum premiums,
+      filter on is_last_touch (or is_first_touch): each contract has exactly one of each.
+    columns:
+      - name: lead_id
+        data_type: integer
+        description: Lead id. One row per lead. Never NULL, unique.
+        data_tests:
+          - unique
+          - not_null
+      - name: lead_date
+        data_type: date
+        description: Date the lead was created. Never NULL.
+        data_tests:
+          - not_null
+      - name: lead_month
+        data_type: date
+        description: First day of the month of lead_date, for monthly reporting. Never NULL.
+        data_tests:
+          - not_null
+      - name: vertical
+        data_type: varchar
+        description: >
+          Comparison calculator: auto / haushalt / leben, or 'unknown' if missing or contradicting.
+          Never NULL.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["auto", "haushalt", "leben", "unknown"]
+      - name: source
+        data_type: varchar
+        description: >
+          Marketing channel: google / newsletter / direct, or 'unknown' if contradicting. Never NULL.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["google", "newsletter", "direct", "unknown"]
+      - name: region
+        data_type: varchar
+        description: Austrian federal state, or 'unknown' if missing or contradicting. Never NULL.
+        data_tests:
+          - not_null
+      - name: email
+        data_type: varchar
+        description: E-mail address of the person, lower-cased. Never NULL.
+        data_tests:
+          - not_null
+      - name: is_converted
+        data_type: boolean
+        description: >
+          True if the lead is a touchpoint of a signed contract, whatever the contract's current status. A
+          contract cancelled later still counts (the cancellation is churn); a pending contract is signed but not
+          yet in force. Never NULL.
+        data_tests:
+          - not_null
+      - name: conversion_id
+        data_type: integer
+        description: >
+          Id of the contract the lead is a touchpoint of. NULL if the lead did not convert; never NULL for
+          converted leads. Several leads can share a contract, but each contract has exactly one first and one
+          last touch.
+        data_tests:
+          - not_null:
+              config:
+                where: "is_converted"
+          - unique:
+              name: mart_lead_conversions_one_first_touch_per_contract
+              config:
+                where: "is_first_touch"
+          - unique:
+              name: mart_lead_conversions_one_last_touch_per_contract
+              config:
+                where: "is_last_touch"
+      - name: is_first_touch
+        data_type: boolean
+        description: >
+          True if the lead is the earliest touchpoint of its contract (ordered by lead date, then lead_id).
+          Never NULL; false for leads that did not convert.
+        data_tests:
+          - not_null
+      - name: is_last_touch
+        data_type: boolean
+        description: >
+          True if the lead is the latest touchpoint of its contract (ordered by lead date, then lead_id).
+          A contract with one touchpoint has it as first and last touch. Never NULL; false for leads that did
+          not convert.
+        data_tests:
+          - not_null
+      - name: signed_date
+        data_type: date
+        description: Date the contract was signed. NULL if the lead did not convert; never NULL for converted leads.
+        data_tests:
+          - not_null:
+              config:
+                where: "is_converted"
+      - name: contract_status
+        data_type: varchar
+        description: >
+          Current status of the contract: active / cancelled / pending. NULL if the lead did not convert;
+          never NULL for converted leads.
+        data_tests:
+          - not_null:
+              config:
+                where: "is_converted"
+          - accepted_values:
+              arguments:
+                values: ["active", "cancelled", "pending"]
+      - name: premium
+        data_type: decimal(12,2)
+        description: >
+          Annual net premium of the contract in EUR, repeated on every touchpoint of the contract. NULL if the
+          lead did not convert, and for converted leads whose premium is missing in the file (not imputed as 0).
+          One cancelled contract has a negative premium.
+      - name: days_to_sign
+        data_type: bigint
+        description: >
+          Days from lead_date to signed_date. NULL if the lead did not convert; for converted leads never NULL,
+          never negative and at most attribution_window_days.
+        data_tests:
+          - not_null:
+              config:
+                where: "is_converted"
+          # A negative value would mean the contract was signed before the lead existed, e.g. because of a
+          # wrongly parsed date: this guards the date-format assumption from Task 1. A value above the window
+          # means a contract names a lead older than the window: the window would have to grow.
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: "{{ var('attribution_window_days') }}"
+
+unit_tests:
+  - name: mart_lead_conversions_merges_duplicate_leads_and_keeps_unconverted_leads
+    description: >
+      Copies of a lead are merged: agreeing values are kept, a value missing in one copy is taken from the
+      other, contradicting values become 'unknown'. Leads without a contract stay in; a contract without a
+      known lead is left out.
+    model: mart_lead_conversions
+    given:
+      - input: ref('stg_leads')
+        rows:
+          - {lead_id: 1, email: "a@x.at", vertical: "auto", source: "google", created_at: 2024-05-01, region: "Wien"}
+          - {lead_id: 1, email: "a@x.at", vertical: null, source: "newsletter", created_at: 2024-05-01, region: "Tirol"}
+          - {lead_id: 2, email: "b@x.at", vertical: "leben", source: "direct", created_at: 2024-05-10, region: null}
+      - input: ref('stg_conversions')
+        rows:
+          - {conversion_id: 10, lead_id: 2, email: "b@x.at", premium: 120.50, signed_date: 2024-05-31, status: "active"}
+          - {conversion_id: 11, lead_id: 99, email: "c@x.at", premium: 80.00, signed_date: 2024-06-01, status: "pending"}
+    expect:
+      rows:
+        - {lead_id: 1, lead_month: 2024-05-01, vertical: "auto", source: "unknown", region: "unknown", is_converted: false, conversion_id: null, days_to_sign: null}
+        - {lead_id: 2, lead_month: 2024-05-01, vertical: "leben", source: "direct", region: "unknown", is_converted: true, conversion_id: 10, days_to_sign: 21}
+
+  - name: mart_lead_conversions_attributes_leads_of_the_same_person_and_vertical
+    description: >
+      Contract 10 names lead 2 and contract 11 names lead 8. Touchpoints are the linked lead and every other lead
+      of the same person and vertical from the 40 days before signing: lead 1 and lead 6 count for contract 10,
+      lead 5 for contract 11. Lead 3 has another vertical, lead 4 is older than the window. Lead 6 falls into
+      the windows of both contracts and counts for the earlier one; lead 8 lies in the window of contract 10,
+      but belongs to contract 11, which names it.
+    model: mart_lead_conversions
+    given:
+      - input: ref('stg_leads')
+        rows:
+          - {lead_id: 1, email: "a@x.at", vertical: "auto", source: "google", created_at: 2024-05-01}
+          - {lead_id: 2, email: "a@x.at", vertical: "auto", source: "direct", created_at: 2024-05-20}
+          - {lead_id: 3, email: "a@x.at", vertical: "leben", source: "newsletter", created_at: 2024-05-25}
+          - {lead_id: 4, email: "a@x.at", vertical: "auto", source: "google", created_at: 2024-03-01}
+          - {lead_id: 5, email: "a@x.at", vertical: "auto", source: "direct", created_at: 2024-06-10}
+          - {lead_id: 6, email: "a@x.at", vertical: "auto", source: "newsletter", created_at: 2024-05-28}
+          - {lead_id: 8, email: "a@x.at", vertical: "auto", source: "google", created_at: 2024-05-29}
+          - {lead_id: 9, email: "b@x.at", vertical: "auto", source: "direct", created_at: 2024-05-15}
+      - input: ref('stg_conversions')
+        rows:
+          - {conversion_id: 10, lead_id: 2, email: "a@x.at", signed_date: 2024-05-31, status: "active"}
+          - {conversion_id: 11, lead_id: 8, email: "a@x.at", signed_date: 2024-06-20, status: "pending"}
+    expect:
+      rows:
+        - {lead_id: 1, is_converted: true, conversion_id: 10, is_first_touch: true, is_last_touch: false}
+        - {lead_id: 2, is_converted: true, conversion_id: 10, is_first_touch: false, is_last_touch: false}
+        - {lead_id: 3, is_converted: false, conversion_id: null, is_first_touch: false, is_last_touch: false}
+        - {lead_id: 4, is_converted: false, conversion_id: null, is_first_touch: false, is_last_touch: false}
+        - {lead_id: 5, is_converted: true, conversion_id: 11, is_first_touch: false, is_last_touch: true}
+        - {lead_id: 6, is_converted: true, conversion_id: 10, is_first_touch: false, is_last_touch: true}
+        - {lead_id: 8, is_converted: true, conversion_id: 11, is_first_touch: true, is_last_touch: false}
+        - {lead_id: 9, is_converted: false, conversion_id: null, is_first_touch: false, is_last_touch: false}

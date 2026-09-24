@@ -24,7 +24,14 @@ vars:
     "99.99.9999": "%d.%m.%Y"
     "99/99/9999": "%m/%d/%Y"
 
+  # Attribution window in days: a lead is a touchpoint of a contract if it comes from the same person and
+  # vertical within this many days before signing (mart_lead_conversions). It is the smallest window that
+  # covers every lead a contract names (Task 1, section 9).
+  attribution_window_days: 40
+
 models:
   lead_conversions:
     staging:
       +materialized: view
+    marts:
+      +materialized: table
