@@ -26,7 +26,9 @@ vars:
 
   # Attribution window in days: a lead is a touchpoint of a contract if it comes from the same person and
   # vertical within this many days before signing (mart_lead_conversions). It is the smallest window that
-  # covers every lead a contract names (Task 1, section 9).
+  # covers every lead a contract names (Task 1, section 9). It also starts a new customer journey after this
+  # many days without a touchpoint (agg_customer_journeys), and a lead month or journey counts as complete once
+  # its leads are at least this old at the data cutoff (agg_lead_conversions_monthly, agg_customer_journeys).
   attribution_window_days: 40
 
 models:

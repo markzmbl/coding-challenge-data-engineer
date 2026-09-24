@@ -154,6 +154,313 @@ models:
                 min_value: 0
                 max_value: "{{ var('attribution_window_days') }}"
 
+  - name: agg_customer_journeys
+    description: >
+      Task 3: one row per customer journey, built on mart_lead_conversions. A customer journey is the sequence of
+      touchpoints (leads) of one customer in one vertical. The touchpoints of a conversion form one journey, its
+      conversion path. The other leads of a customer and vertical form journeys too: a new journey starts after
+      more than attribution_window_days (40) without a touchpoint. Every lead belongs to exactly one journey.
+
+
+      Journey conversion rate = converted journeys / complete journeys. A journey is complete once it has
+      converted, or once its last touch is at least attribution_window_days old at the data cutoff (the latest
+      signing date in the data); until then it can still convert.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_touch_date >= first_touch_date"
+    columns:
+      - name: journey_id
+        data_type: integer
+        description: The lead_id of the journey's first touchpoint. Never NULL, unique.
+        data_tests:
+          - unique
+          - not_null
+      - name: customer_email
+        data_type: varchar
+        description: The customer, identified by the e-mail address (lower-cased). Never NULL.
+        data_tests:
+          - not_null
+      - name: vertical
+        data_type: varchar
+        description: "Comparison calculator: auto / haushalt / leben, or 'unknown'. Never NULL."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["auto", "haushalt", "leben", "unknown"]
+      - name: first_touch_date
+        data_type: date
+        description: Date of the first touchpoint. Never NULL.
+        data_tests:
+          - not_null
+      - name: journey_month
+        data_type: date
+        description: First day of the month of the first touchpoint, for monthly reporting. Never NULL.
+        data_tests:
+          - not_null
+      - name: last_touch_date
+        data_type: date
+        description: Date of the last touchpoint. Never NULL.
+        data_tests:
+          - not_null
+      - name: touchpoints
+        data_type: bigint
+        description: Number of touchpoints (leads) of the journey, the path length. Never NULL, at least 1.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: path
+        data_type: varchar
+        description: >
+          The channels of the touchpoints in order, e.g. 'google > direct'; for a converted journey its conversion
+          path. Never NULL.
+        data_tests:
+          - not_null
+      - name: first_touch_source
+        data_type: varchar
+        description: Channel of the first touchpoint, the one that opened the journey. Never NULL.
+        data_tests:
+          - not_null
+      - name: last_touch_source
+        data_type: varchar
+        description: Channel of the last touchpoint, the one that closed a converted journey. Never NULL.
+        data_tests:
+          - not_null
+      - name: is_converted
+        data_type: boolean
+        description: >
+          True if the journey ended in a conversion: a signed contract, whatever its status today. Never NULL.
+        data_tests:
+          - not_null
+      - name: conversion_id
+        data_type: integer
+        description: Id of the contract. NULL if the journey did not convert; never NULL and unique otherwise.
+        data_tests:
+          - unique
+          - not_null:
+              config:
+                where: "is_converted"
+      - name: signed_date
+        data_type: date
+        description: Date the contract was signed. NULL if the journey did not convert.
+        data_tests:
+          - not_null:
+              config:
+                where: "is_converted"
+      - name: contract_status
+        data_type: varchar
+        description: "Status of the contract today: active / cancelled / pending. NULL if the journey did not convert."
+        data_tests:
+          - not_null:
+              config:
+                where: "is_converted"
+          - accepted_values:
+              arguments:
+                values: ["active", "cancelled", "pending"]
+      - name: premium
+        data_type: decimal(12,2)
+        description: >
+          Annual net premium of the contract in EUR. NULL if the journey did not convert, or if the premium is
+          missing in the source.
+      - name: days_to_convert
+        data_type: bigint
+        description: >
+          Time lag: days from the first touch to the signing. NULL if the journey did not convert; otherwise between
+          0 and attribution_window_days.
+        data_tests:
+          - not_null:
+              config:
+                where: "is_converted"
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: "{{ var('attribution_window_days') }}"
+      - name: is_complete
+        data_type: boolean
+        description: >
+          False while the journey can still convert: not converted, and the last touch is younger than
+          attribution_window_days at the data cutoff. Never NULL.
+        data_tests:
+          - not_null
+
+  - name: agg_lead_conversions_monthly
+    description: >
+      Task 3: leads, conversions and conversion rate per vertical, source and lead month, built on
+      mart_lead_conversions (same definitions). A conversion counts at its last touch, the lead that closed the
+      customer journey (last-touch attribution, the default: in 40 of 41 conversions it is the lead the contract
+      names). The first_touch_ columns count it at the lead that opened the journey, for comparison; both add up
+      to all attributed conversions and differ only where a conversion path crosses channels or months. The
+      month is the month of the lead, so a conversion rate never exceeds 100 %. 'unknown' vertical or source
+      stays as its own rows, so that the table adds up to all leads. To combine rows (e.g. all months of a
+      channel), add up leads and conversions and divide again; do not average the rates.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ["vertical", "source", "lead_month"]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "conversions <= leads and first_touch_conversions <= leads"
+    columns:
+      - name: vertical
+        data_type: varchar
+        description: "Comparison calculator: auto / haushalt / leben / unknown. Never NULL."
+        data_tests:
+          - not_null
+      - name: source
+        data_type: varchar
+        description: "Marketing channel: google / newsletter / direct / unknown. Never NULL."
+        data_tests:
+          - not_null
+      - name: lead_month
+        data_type: date
+        description: First day of the month the leads came in. Never NULL.
+        data_tests:
+          - not_null
+      - name: leads
+        data_type: bigint
+        description: Number of leads (touchpoints). Never NULL, at least 1.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: conversions
+        data_type: bigint
+        description: >
+          Signed contracts whose last touch is one of these leads (last-touch attribution), whatever their
+          status. Never NULL.
+        data_tests:
+          - not_null
+      - name: conversion_rate
+        data_type: double
+        description: conversions / leads, between 0 and 1. Never NULL.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: active_premium
+        data_type: decimal(38,2)
+        description: >
+          Annual net premium in EUR of the active contracts among the conversions; 0 without one. An active
+          contract without a premium in the source adds nothing (1 contract today, Task 1 issue 2), so the sum
+          is a lower bound. Active premium per lead = active_premium / leads. Never NULL.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: first_touch_conversions
+        data_type: bigint
+        description: >
+          For comparison: signed contracts whose first touch is one of these leads (first-touch attribution).
+          Never NULL.
+        data_tests:
+          - not_null
+      - name: first_touch_conversion_rate
+        data_type: double
+        description: first_touch_conversions / leads, between 0 and 1. Never NULL.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: first_touch_active_premium
+        data_type: decimal(38,2)
+        description: Like active_premium, by first-touch attribution. Never NULL.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: is_complete
+        data_type: boolean
+        description: >
+          False while the leads of the month can still convert. A month is complete once all of its leads are
+          at least attribution_window_days (40) old at the data cutoff, the latest signing date in the data.
+          Never NULL.
+        data_tests:
+          - not_null
+
+  - name: agg_customers
+    description: >
+      Task 3: one row per customer, with the customer's lifecycle. A customer is a person, identified by the
+      e-mail address (trimmed and lower-cased); two different addresses count as two customers, even with the
+      same name. Unlike mart_lead_conversions, the customer view counts all contracts, including those without a
+      valid lead_id (9 of 50): a contract belongs to the person even when it cannot be attributed to a lead. A
+      customer came back if a new journey (a new lead) followed the first conversion.
+    columns:
+      - name: customer_email
+        data_type: varchar
+        description: E-mail address of the customer, lower-cased. Never NULL, unique.
+        data_tests:
+          - unique
+          - not_null
+      - name: leads
+        data_type: bigint
+        description: Number of leads (touchpoints) of the customer. Never NULL; 0 if the person only appears with a contract.
+        data_tests:
+          - not_null
+      - name: conversions
+        data_type: bigint
+        description: Number of signed contracts of the customer, whatever their status. Never NULL.
+        data_tests:
+          - not_null
+      - name: total_active_premium
+        data_type: decimal(38,2)
+        description: >
+          Sum of the annual net premiums of the customer's active contracts, in EUR. 0 without an active
+          contract; NULL if an active contract has no premium in the source (1 customer today).
+      - name: has_active_contract
+        data_type: boolean
+        description: True if the customer holds at least one active contract today. Never NULL.
+        data_tests:
+          - not_null
+      - name: acquisition_source
+        data_type: varchar
+        description: >
+          Channel of the customer's first touchpoint: google / newsletter / direct / unknown. NULL only if the
+          person has no lead.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["google", "newsletter", "direct", "unknown"]
+      - name: first_contract_date
+        data_type: date
+        description: Signing date of the customer's first contract. NULL if the customer has no contract.
+      - name: returned_after_contract
+        data_type: boolean
+        description: >
+          True if the customer came back after the first conversion: a new lead, which opens a new journey. Never
+          NULL; false without a contract.
+        data_tests:
+          - not_null
+      - name: days_to_return
+        data_type: bigint
+        description: Days from the first contract to the next lead. NULL if the customer did not come back.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: return_source
+        data_type: varchar
+        description: Channel of the lead the customer came back with. NULL if the customer did not come back.
+      - name: return_vertical
+        data_type: varchar
+        description: >
+          Whether the customer came back in the vertical of the first contract ('same') or another one ('new',
+          interest in a cross-sell). 'unknown' if the vertical of the first contract or of the new lead is not
+          known, e.g. because the first contract has no valid lead_id. NULL if the customer did not come back.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["same", "new", "unknown"]
+
 unit_tests:
   - name: mart_lead_conversions_merges_duplicate_leads_and_keeps_unconverted_leads
     description: >
@@ -209,3 +516,81 @@ unit_tests:
         - {lead_id: 6, is_converted: true, conversion_id: 10, is_first_touch: false, is_last_touch: true}
         - {lead_id: 8, is_converted: true, conversion_id: 11, is_first_touch: true, is_last_touch: false}
         - {lead_id: 9, is_converted: false, conversion_id: null, is_first_touch: false, is_last_touch: false}
+
+  - name: agg_customer_journeys_groups_touchpoints_into_journeys
+    description: >
+      The touchpoints of a conversion form one journey (leads 5 and 6). The other leads of a customer and vertical
+      form journeys too: leads 1 and 2 are 30 days apart and form one journey, lead 3 follows 50 days later and
+      opens a new one, lead 4 has another vertical. Lead 9 is younger than the attribution window at the data
+      cutoff (the latest signing date, 2024-06-30), so its journey is not complete yet.
+    model: agg_customer_journeys
+    given:
+      - input: ref('mart_lead_conversions')
+        rows:
+          - {lead_id: 1, email: "a@x.at", vertical: "auto", source: "google", lead_date: 2024-01-01, is_converted: false}
+          - {lead_id: 2, email: "a@x.at", vertical: "auto", source: "direct", lead_date: 2024-01-31, is_converted: false}
+          - {lead_id: 3, email: "a@x.at", vertical: "auto", source: "newsletter", lead_date: 2024-03-21, is_converted: false}
+          - {lead_id: 4, email: "a@x.at", vertical: "leben", source: "google", lead_date: 2024-01-15, is_converted: false}
+          - {lead_id: 5, email: "b@x.at", vertical: "auto", source: "google", lead_date: 2024-02-01, is_converted: true, conversion_id: 10, signed_date: 2024-02-20, contract_status: "active"}
+          - {lead_id: 6, email: "b@x.at", vertical: "auto", source: "direct", lead_date: 2024-02-10, is_converted: true, conversion_id: 10, signed_date: 2024-02-20, contract_status: "active"}
+          - {lead_id: 8, email: "c@x.at", vertical: "haushalt", source: "newsletter", lead_date: 2024-06-01, is_converted: true, conversion_id: 11, signed_date: 2024-06-30, contract_status: "pending"}
+          - {lead_id: 9, email: "d@x.at", vertical: "haushalt", source: "direct", lead_date: 2024-06-10, is_converted: false}
+    expect:
+      rows:
+        - {journey_id: 1, touchpoints: 2, path: "google > direct", is_converted: false, conversion_id: null, days_to_convert: null, is_complete: true}
+        - {journey_id: 3, touchpoints: 1, path: "newsletter", is_converted: false, conversion_id: null, days_to_convert: null, is_complete: true}
+        - {journey_id: 4, touchpoints: 1, path: "google", is_converted: false, conversion_id: null, days_to_convert: null, is_complete: true}
+        - {journey_id: 5, touchpoints: 2, path: "google > direct", is_converted: true, conversion_id: 10, days_to_convert: 19, is_complete: true}
+        - {journey_id: 8, touchpoints: 1, path: "newsletter", is_converted: true, conversion_id: 11, days_to_convert: 29, is_complete: true}
+        - {journey_id: 9, touchpoints: 1, path: "direct", is_converted: false, conversion_id: null, days_to_convert: null, is_complete: false}
+
+  - name: agg_customers_counts_all_contracts_of_a_person
+    description: >
+      A customer is an e-mail address. A contract without a known lead counts for the person. The active
+      premium sums the active contracts: 0 without one, NULL if an active contract has no premium.
+    model: agg_customers
+    given:
+      - input: ref('mart_lead_conversions')
+        rows:
+          - {lead_id: 1, email: "a@x.at"}
+          - {lead_id: 2, email: "a@x.at"}
+          - {lead_id: 3, email: "b@x.at"}
+          - {lead_id: 4, email: "c@x.at"}
+      - input: ref('stg_conversions')
+        rows:
+          - {conversion_id: 10, lead_id: 1, email: "a@x.at", premium: 100.00, status: "cancelled"}
+          - {conversion_id: 11, lead_id: 99, email: "a@x.at", premium: 250.00, status: "active"}
+          - {conversion_id: 12, lead_id: 3, email: "b@x.at", premium: null, status: "active"}
+    expect:
+      rows:
+        - {customer_email: "a@x.at", leads: 2, conversions: 2, total_active_premium: 250.00, has_active_contract: true}
+        - {customer_email: "b@x.at", leads: 1, conversions: 1, total_active_premium: null, has_active_contract: true}
+        - {customer_email: "c@x.at", leads: 1, conversions: 0, total_active_premium: 0, has_active_contract: false}
+
+  - name: agg_customers_follows_the_lifecycle_after_the_first_conversion
+    description: >
+      The acquisition channel is the channel of the first touchpoint. After the first conversion, the next lead
+      opens a new journey: it shows whether the customer came back, after how many days, through which
+      channel, and in the same or a new vertical. If the first contract has no valid lead_id, its vertical and so the comparison are unknown.
+    model: agg_customers
+    given:
+      - input: ref('mart_lead_conversions')
+        rows:
+          - {lead_id: 1, email: "a@x.at", lead_date: 2024-01-10, vertical: "auto", source: "google", conversion_id: 10, is_last_touch: true}
+          - {lead_id: 2, email: "a@x.at", lead_date: 2024-03-01, vertical: "leben", source: "newsletter", is_last_touch: false}
+          - {lead_id: 3, email: "b@x.at", lead_date: 2024-01-05, vertical: "haushalt", source: "direct", conversion_id: 11, is_last_touch: true}
+          - {lead_id: 4, email: "b@x.at", lead_date: 2024-02-20, vertical: "haushalt", source: "google", is_last_touch: false}
+          - {lead_id: 5, email: "c@x.at", lead_date: 2024-01-01, vertical: "auto", source: "google", is_last_touch: false}
+          - {lead_id: 6, email: "d@x.at", lead_date: 2024-01-01, vertical: "auto", source: "direct", is_last_touch: false}
+          - {lead_id: 7, email: "d@x.at", lead_date: 2024-02-01, vertical: "auto", source: "newsletter", is_last_touch: false}
+      - input: ref('stg_conversions')
+        rows:
+          - {conversion_id: 10, lead_id: 1, email: "a@x.at", signed_date: 2024-01-31, status: "active"}
+          - {conversion_id: 11, lead_id: 3, email: "b@x.at", signed_date: 2024-01-25, status: "active"}
+          - {conversion_id: 13, lead_id: 99, email: "d@x.at", signed_date: 2024-01-20, status: "pending"}
+    expect:
+      rows:
+        - {customer_email: "a@x.at", acquisition_source: "google", first_contract_date: 2024-01-31, returned_after_contract: true, days_to_return: 30, return_source: "newsletter", return_vertical: "new"}
+        - {customer_email: "b@x.at", acquisition_source: "direct", first_contract_date: 2024-01-25, returned_after_contract: true, days_to_return: 26, return_source: "google", return_vertical: "same"}
+        - {customer_email: "c@x.at", acquisition_source: "google", first_contract_date: null, returned_after_contract: false, days_to_return: null, return_source: null, return_vertical: null}
+        - {customer_email: "d@x.at", acquisition_source: "direct", first_contract_date: 2024-01-20, returned_after_contract: true, days_to_return: 12, return_source: "newsletter", return_vertical: "unknown"}

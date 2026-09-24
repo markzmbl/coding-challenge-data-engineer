@@ -9,6 +9,7 @@ My solution to the durchblicker take-home assignment ([EN](docs/assignment/Codin
 |---|---|
 | 1. Data profiling & data quality | The issues [below](#task-1--data-profiling--data-quality), their evidence in the [notebook](notebooks/task1_data_profiling.ipynb) |
 | 2. Lead-to-conversion model | [`mart_lead_conversions`](dbt/models/marts/mart_lead_conversions.sql), [sample queries](notebooks/task2_lead_conversions.ipynb) |
+| 3. KPI & customer aggregation | [`agg_lead_conversions_monthly`](dbt/models/marts/agg_lead_conversions_monthly.sql), [`agg_customers`](dbt/models/marts/agg_customers.sql), [`agg_customer_journeys`](dbt/models/marts/agg_customer_journeys.sql) |
 | Assumptions and open questions | [Below](#assumptions-and-open-questions) |
 
 Every model and column is documented in the dbt yml files, including its type and when it can be NULL
@@ -48,7 +49,7 @@ converting correctly, or only the team that owns the source.
 | 8 | 13 of 49 premiums use a decimal comma; a naive cast makes them NULL (7) | Medium | Replace the comma before casting. |
 | 9 | E-mails with spaces and capitals: 123 spellings for 88 addresses (5) | Medium | Trim and lower-case: the e-mail is the customer key. |
 | 10 | Status `ACTIVE` and `aktiv` next to `active`, on 2 of 27 active contracts (5) | Medium | Lower-case and map to the documented values. |
-| 11 | The leads end on 2024-10-31, the contracts on 2024-11-29: the latest leads can still convert (6.4) | Medium | Rates by lead month; a month counts as complete once its leads are older than the 40 days. |
+| 11 | The leads end on 2024-10-31, the contracts on 2024-11-29: the latest leads can still convert (6.4) | Medium | Rates by lead month, with `is_complete` (Task 3). |
 | 12 | 1 contract row is exported twice (8) | Low | Drop exact duplicates. |
 | 13 | 3 leads have no vertical, 5 no region (4) | Low | `unknown`, so that totals still add up. |
 
@@ -65,10 +66,43 @@ the customer journey, `is_last_touch` the one that closed it. 43 leads are touch
 
 | Case | Decision | Why |
 |---|---|---|
-| Conversions without a matching lead (issue 1) | Not in this table. | The e-mail alone finds a lead in the window for only 3 of the 9, and one of those belongs to another conversion ([analysis](dbt/analyses/orphan_email_candidates.sql)). A guess would put wrong numbers into every breakdown. |
+| Conversions without a matching lead (issue 1) | Not in this table. Counted in the customer view (Task 3). | The e-mail alone finds a lead in the window for only 3 of the 9, and one of those belongs to another conversion ([analysis](dbt/analyses/orphan_email_candidates.sql)). A guess would put wrong numbers into every breakdown. |
 | Leads that never converted (76) | Kept, with `is_converted = false`. | They are the denominator of every conversion rate, and the list for a follow-up. |
 | Lead ids that occur twice (issue 3) | One row per lead: values the copies agree on are kept, contradicting ones become `unknown`. | No copy is picked at random. |
 | Conversions with several touchpoints (2 of 41) | Every touchpoint carries the conversion, marked as first or last touch. | Their touchpoints come from two channels, so the channel of the conversion depends on the attribution model. |
+
+## Task 3 – KPI & customer-level aggregation
+
+All three models are built on `mart_lead_conversions`, so every definition exists once:
+
+| Model | One row per | Columns |
+|---|---|---|
+| [`agg_lead_conversions_monthly`](dbt/models/marts/agg_lead_conversions_monthly.sql) | vertical × source × lead month (68) | `leads`, `conversions`, `conversion_rate`, `active_premium`; the same by first-touch attribution; `is_complete` |
+| [`agg_customers`](dbt/models/marts/agg_customers.sql) | customer (88) | `leads`, `conversions`, `total_active_premium`, `has_active_contract`; the acquisition channel, and whether, when and how the customer came back |
+| [`agg_customer_journeys`](dbt/models/marts/agg_customer_journeys.sql) | customer journey (117) | path, touchpoints, first- and last-touch channel, conversion, time lag, `is_complete` |
+
+**Definitions**
+
+| Term | Definition |
+|---|---|
+| Conversion | A signed contract, whatever its status today (active, pending or cancelled). A later cancellation is churn, not a failed conversion. |
+| Customer | A person, identified by the trimmed, lower-cased e-mail address. |
+| Customer journey | The touchpoints (leads) of one customer in one vertical. The touchpoints of a conversion form one journey; other leads start a new journey after more than 40 days without a touchpoint. |
+| Attribution | A conversion counts at its last touch, the lead that closed the journey. It is the default, because in 40 of 41 conversions it is the lead the contract names. First-touch attribution counts it at the lead that opened the journey. |
+| Conversion rate | Conversions / leads (34.5 % overall). A conversion counts in the month of its lead, not of its signing, so a rate never exceeds 100 %: by signing month, November would have 4 conversions and no lead. To combine rows, add up leads and conversions, then divide. |
+| Journey conversion rate | Converted journeys / complete journeys (36.9 %). |
+| Complete | A lead month or journey whose leads are older than the attribution window at the data cutoff. October 2024 and 6 journeys are not complete yet. |
+| Total active premium | The sum of the annual net premiums of a customer's active contracts. NULL, not 0, if one of them has no premium (issue 2). |
+
+**Where the numbers differ, and why.** A [test](dbt/tests/assert_aggregates_add_up.sql) checks this on every run:
+
+| | Leads | Contracts |
+|---|---|---|
+| Rows in the files | 123 | 51 |
+| After cleaning (exact duplicate removed) | 123 | 50 |
+| After merging duplicate lead ids | 119 | 50 |
+| Attributed to a lead (monthly model, journey model) | 119 | 41 |
+| Belonging to a customer (customer model) | 119 | 50 |
 
 ## Assumptions and open questions
 
@@ -77,12 +111,16 @@ the customer journey, `is_last_touch` the one that closed it. 43 leads are touch
 - The e-mail address identifies a customer (issue 4).
 - `premium` is the annual net premium in EUR, without thousands separators. `aktiv` means `active`.
 - Both copies of a duplicated lead id describe the same lead (issue 3).
-- Each delivery is a full export that replaces the previous one.
-- A contract's touchpoints lie within the attribution window of 40 days (issue 5).
+- Each delivery is a full export that replaces the previous one. The files carry no export date, so the latest
+  signing date (2024-11-29) is the data cutoff.
+- The attribution window of 40 days (issue 5) also separates customer journeys, and decides when a lead month
+  or a journey is complete.
 
 **Open questions.** The questions about the data are in the Task 1 table (issues 1–6). About the
 definitions:
-1. Should a `pending` contract count as a conversion? Here it does, because it is signed.
+1. Should a `pending` contract count as a conversion? Here it does, because it is signed. Without it, the
+   conversion rate would be 32.8 % instead of 34.5 %
+   ([analysis](dbt/analyses/conversion_rate_without_pending.sql)).
 2. Which attribution model should steer the marketing budget: last touch (the channel that closes
    journeys) or first touch (the one that opens them)? They differ for 2 of 41 conversions.
 
