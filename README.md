@@ -2,12 +2,16 @@
 
 My solution to the durchblicker take-home assignment ([EN](docs/assignment/Coding_Challenge_EN.pdf),
 [DE](docs/assignment/Coding_Challenge_DE.pdf)):
+- A dbt pipeline on DuckDB turns the two CSV exports into tested tables (raw → staging).
 - A notebook shows the profiling.
 
 | Task | Deliverable |
 |---|---|
 | 1. Data profiling & data quality | The issues [below](#task-1--data-profiling--data-quality), their evidence in the [notebook](notebooks/task1_data_profiling.ipynb) |
 | Assumptions and open questions | [Below](#assumptions-and-open-questions) |
+
+Every model and column is documented in the dbt yml files, including its type and when it can be NULL
+([staging](dbt/models/staging/_staging.yml)).
 
 ## Task 1 – Data profiling & data quality
 
@@ -35,7 +39,7 @@ converting correctly, or only the team that owns the source.
 | 5 | How the source links a lead to a contract is unknown: no lead a contract names is older than 40 days, and in 2 of 40 contracts it is not the last lead before signing (9.3, 9.4) | Low | Attribute by rule: every lead of the customer and vertical from the 40 days before signing. | How is the `lead_id` of a contract chosen, and is 40 days a limit of the system? |
 | 6 | 2 negative premiums, both on cancelled contracts (7) | Low | Kept: no active premium is affected. | A refund, a reversal booking, or an error? |
 
-**Settled by converting correctly.** One rule each:
+**Settled by converting correctly.** One rule each, guarded by a test:
 
 | # | Issue | Criticality | Rule |
 |---|---|---|---|
@@ -54,6 +58,7 @@ converting correctly, or only the team that owns the source.
 - The e-mail address identifies a customer (issue 4).
 - `premium` is the annual net premium in EUR, without thousands separators. `aktiv` means `active`.
 - Both copies of a duplicated lead id describe the same lead (issue 3).
+- Each delivery is a full export that replaces the previous one.
 
 **Open questions.** The questions about the data are in the Task 1 table (issues 1–6). About the
 definitions:
@@ -68,6 +73,15 @@ Tested with Python 3.13 on Windows.
 python -m venv .venv
 .venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
+```
+
+`dbt build` loads both CSVs, builds all models and runs all tests. The warnings it prints are the known Task 1
+issues at their baseline.
+
+```bash
+cd dbt
+dbt deps
+dbt build
 ```
 
 Then open the notebook. Each chart is stored twice: interactive, and as a PNG that also shows on GitHub

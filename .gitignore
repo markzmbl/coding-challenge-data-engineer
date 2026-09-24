@@ -3,3 +3,11 @@ __pycache__/
 .ipynb_checkpoints/
 *.pyc
 .idea/
+
+# dbt (it writes logs/ into whichever folder it runs in)
+dbt/target/
+dbt/dbt_packages/
+dbt/.user.yml
+logs/
+*.duckdb
+*.duckdb.wal

@@ -6,4 +6,9 @@ kaleido==1.4.0
 jupyterlab==4.6.4
 ipykernel==7.3.0
 nbconvert==7.17.1
+duckdb==1.5.5
 ruff==0.16.8
+
+# The pipeline
+dbt-core==1.12.5
+dbt-duckdb==1.11.0
