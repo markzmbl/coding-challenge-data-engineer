@@ -11,7 +11,8 @@ Take-home assignment for durchblicker (see `docs/assignment/Coding_Challenge_EN.
 ├── notebooks/
 │   ├── common/                   # code shared by the notebooks: paths, chart defaults, warehouse queries
 │   ├── 01_data_profiling.ipynb   # Task 1: profiling & DQ issue register
-│   └── 02_lead_conversions.ipynb # Task 2: sample queries and charts on the lead mart, for marketing
+│   ├── 02_lead_conversions.ipynb # Task 2: sample queries and charts on the lead mart, for marketing
+│   └── 03_monthly_kpis_and_customers.ipynb  # Task 3: sample queries on the KPI and customer marts
 ├── dbt/                          # dbt project (DuckDB): raw -> staging -> marts
 │   ├── dbt_project.yml           # load hook, vars (known date formats, conversion window)
 │   ├── profiles.yml              # local DuckDB file lead_conversions.duckdb
@@ -68,7 +69,7 @@ dbt build
 Warnings are expected: they are the known data-quality issues from Task 1, each monitored with a threshold
 (`warn_if` / `error_if`) that fails the run if the issue grows.
 
-Notebook 02 reads the dbt warehouse (`dbt/lead_conversions.duckdb`), so run `dbt build` before it.
+Notebooks 02 and 03 read the dbt warehouse (`dbt/lead_conversions.duckdb`), so run `dbt build` before them.
 
 ## Process log
 
@@ -199,6 +200,16 @@ conversions, rate between 0 and 1, unique customers,
 and a reconciliation test: the monthly mart adds up to the lead mart, the customer view to the lead mart and to
 all contracts. A unit test pins down what counts for a customer.
 
+**Notebook `notebooks/03_monthly_kpis_and_customers.ipynb`:** sample queries on both marts.
+- Conversion rate by channel, by vertical and per lead month, with October marked as still able to grow.
+- Which channel brings contracts that last: google converts about as often as the others (33 of 100 leads),
+  but only 11 of 100 end in an active contract (newsletter 32, direct 23), because half of its contracts were
+  cancelled. With 12 google contracts, this is a signal to watch, not proof. Checked against two obvious
+  explanations: it is not the product mix, and not contract age.
+- Customers: 88, of whom 24 hold an active contract (17,438.69 EUR active premium in total).
+- Customers with several leads hold a contract much more often (39 % with one lead, 58 % with two, 88 % with
+  three), which makes repeat visitors the warmer audience for a follow-up.
+- Top customers by active premium.
 
 ### Task 4: Architecture & Automation
 _tbd_
